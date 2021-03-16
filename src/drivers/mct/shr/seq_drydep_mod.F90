@@ -43,25 +43,18 @@ module seq_drydep_mod
 
   ! !PUBLIC DATA MEMBERS:
 
-  ! method specification
-  character(16),public,parameter :: DD_XATM = 'xactive_atm'! dry-dep atmosphere
-  character(16),public,parameter :: DD_XLND = 'xactive_lnd'! dry-dep land
-  character(16),public,parameter :: DD_TABL = 'table'      ! dry-dep table (atm and lnd)
-  character(16),public :: drydep_method = DD_XLND          ! Which option choosen
-
   real(r8), public, parameter :: ph     = 1.e-5_r8         ! measure of the acidity (dimensionless)
 
-  logical, public  :: lnd_drydep                           ! If dry-dep fields passed
   integer, public  :: n_drydep = 0                         ! Number in drypdep list
-  character(len=32), public, dimension(maxspc) :: drydep_list = ''   ! List of dry-dep species
+  character(len=32), public, protected :: drydep_list(maxspc) = ''   ! List of dry-dep species
 
-  character(len=CS), public :: drydep_fields_token = ''   ! First drydep fields token
+  character(len=CS), public, protected :: drydep_fields_token = ''   ! First drydep fields token
 
-  real(r8), public, allocatable, dimension(:) :: foxd      ! reactivity factor for oxidation (dimensioness)
-  real(r8), public, allocatable, dimension(:) :: drat      ! ratio of molecular diffusivity (D_H2O/D_species; dimensionless)
-  integer,  public, allocatable, dimension(:) :: mapping   ! mapping to species table
+  real(r8), public, allocatable, protected :: foxd(:)      ! reactivity factor for oxidation (dimensioness)
+  real(r8), public, allocatable, protected :: drat(:)      ! ratio of molecular diffusivity (D_H2O/D_species; dimensionless)
+  integer,  public, allocatable, protected :: mapping(:)   ! mapping to species table
   ! --- Indices for each species ---
-  integer,  public :: h2_ndx, ch4_ndx, co_ndx, pan_ndx, mpan_ndx, so2_ndx, o3_ndx, o3a_ndx, xpan_ndx
+  integer,  public, protected :: h2_ndx, ch4_ndx, co_ndx, pan_ndx, mpan_ndx, so2_ndx, o3_ndx, o3a_ndx, xpan_ndx
 
   !---------------------------------------------------------------------------
   ! Table 1 from Wesely, Atmos. Environment, 1989, p1293
@@ -119,7 +112,7 @@ module seq_drydep_mod
   !--- rcls: Lower canopy resistance for SO2        (s.m-1)
   !--- rclo: Lower canopy resistance for O3         (s.m-1)
   !
-  real(r8), public, dimension(NSeas,NLUse) :: ri, rlu, rac, rgss, rgso, rcls, rclo
+  real(r8), public, protected, dimension(NSeas,NLUse) :: ri, rlu, rac, rgss, rgso, rcls, rclo
 
   data ri  (1,1:NLUse) &
        /1.e36_r8,  60._r8, 120._r8,  70._r8, 130._r8, 100._r8,1.e36_r8,1.e36_r8,  80._r8, 100._r8, 150._r8/
@@ -199,7 +192,7 @@ module seq_drydep_mod
   !---------------------------------------------------------------------------
   !         ... roughness length
   !---------------------------------------------------------------------------
-  real(r8), public, dimension(NSeas,NLUse) :: z0
+  real(r8), public, protected, dimension(NSeas,NLUse) :: z0
 
   data z0  (1,1:NLUse) &
        /1.000_r8,0.250_r8,0.050_r8,1.000_r8,1.000_r8,1.000_r8,0.0006_r8,0.002_r8,0.150_r8,0.100_r8,0.100_r8/
@@ -245,7 +238,7 @@ module seq_drydep_mod
   !--- data for effective Henry's Law coefficient ---
   real(r8), public, protected, allocatable :: dheff(:,:)
 
-  real(r8), private, parameter :: wh2o = SHR_CONST_MWWV
+  real(r8), parameter :: wh2o = SHR_CONST_MWWV
   real(r8), allocatable :: mol_wgts(:)
 
  character(len=500) :: dep_data_file = 'NONE' ! complete file path
@@ -289,7 +282,7 @@ CONTAINS
     character(*),parameter :: F00   = "('(seq_drydep_read) ',8a)"
     character(*),parameter :: FI1   = "('(seq_drydep_init) ',a,I2)"
 
-    namelist /drydep_inparm/ drydep_list, drydep_method, dep_data_file
+    namelist /drydep_inparm/ drydep_list, dep_data_file
 
     !-----------------------------------------------------------------------------
     ! Read namelist and figure out the drydep field list to pass
@@ -325,7 +318,6 @@ CONTAINS
        end if
     end if
     call shr_mpi_bcast( drydep_list, mpicom )
-    call shr_mpi_bcast( drydep_method, mpicom )
     call shr_mpi_bcast( dep_data_file, mpicom )
 
     n_drydep = 0
@@ -343,11 +335,7 @@ CONTAINS
        n_drydep = n_drydep+1
     enddo
 
-    !--- Make sure method is valid and determine if land is passing drydep fields ---
-    lnd_drydep = n_drydep>0 .and. drydep_method == DD_XLND
-
     if ( s_loglev > 0 ) then
-       write(s_logunit,*) 'seq_drydep_read: drydep_method: ', trim(drydep_method)
        if ( n_drydep == 0 )then
           write(s_logunit,F00) 'No dry deposition fields will be transfered'
        else
@@ -355,17 +343,6 @@ CONTAINS
                n_drydep
        end if
     end if
-
-    if ( trim(drydep_method)/=trim(DD_XATM) .and. &
-         trim(drydep_method)/=trim(DD_XLND) .and. &
-         trim(drydep_method)/=trim(DD_TABL) ) then
-       if ( s_loglev > 0 ) then
-          write(s_logunit,*) 'seq_drydep_read: drydep_method : ', trim(drydep_method)
-          write(s_logunit,*) 'seq_drydep_read: drydep_method must be set to : ', &
-               DD_XATM,', ', DD_XLND,', or ', DD_TABL
-       end if
-       call shr_sys_abort('seq_drydep_read: incorrect dry deposition method specification')
-    endif
 
     ! Need to explicitly add Sl_ based on naming convention
 333 format ('Sl_dd',i3.3)
@@ -619,7 +596,7 @@ CONTAINS
     !----- local -----
     real(r8), parameter :: t0     = 298._r8    ! Standard Temperature
     real(r8), parameter :: ph_inv = 1._r8/ph   ! Inverse of PH
-    integer  :: m, l, id       ! indices
+    integer  :: m, l           ! indices
     real(r8) :: e298           ! Henry's law coefficient @ standard temperature (298K)
     real(r8) :: dhr            ! temperature dependence of Henry's law coefficient
     real(r8) :: dk1s(ncol)     ! DK Work array 1
@@ -637,7 +614,6 @@ CONTAINS
     wrk(:) = (t0 - sfc_temp(:))/(t0*sfc_temp(:))
     do m = 1,n_drydep
        l    = mapping(m)
-       id   = 6*(l - 1)
        e298 = dheff(1,l)
        dhr  = dheff(2,l)
        heff(:,m) = e298*exp( dhr*wrk(:) )
