@@ -37,7 +37,7 @@ module seq_drydep_mod
   integer, private, parameter :: maxspc = 210              ! Maximum number of species
   integer, public,  protected :: n_species_table           ! Number of species to work with
   integer, private, parameter :: NSeas = 5                 ! Number of seasons
-  integer, private, parameter :: NLUse = 11                ! Number of land-use types
+  integer, public,  parameter :: NLUse = 11                ! Number of land-use types
   integer, private, protected :: NHen
 
   ! !PUBLIC DATA MEMBERS:
